@@ -1,0 +1,109 @@
+Binary Protocol Decoding: 
+
+Problem Statement
+
+The transport department purchased a bunch of used MetaCTF license plate cameras on
+eBay, but the console's display is fried, and we can't figure out how to use them. Can
+you help us out? Here's a packet capture
+[https://metaproblems.com/07fb1d1c1e787ce3be6db7de826a1cda/plates.pcapng], and here's
+a description [https://metaproblems.com/07fb1d1c1e787ce3be6db7de826a1cda/rfc.html] of
+the protocol they use.
+
+Solution
+
+This is a pretty straightforward binary protocol decoding challenge - you read the RFC
+and figure out the basics of the protocol to decode the UDP payloads in the PCAP. Some
+"gotchas" include the fact the header is packed bits (version is 3 bits, opcode is 5
+bits, of the first byte), the generation of the key (it's just the payload of the
+Begin XOR'd with the payload of the AckBegin), and the way the key is applied (the XOR
+"restarts" on every individual field that needs to be encrypted).
+
+Protocol/Conversation Summarized
+
+1. The client (console) sends a Begin packet, containing Nonce1.
+2. The server (emitter) replies with an AckBegin packet, containing Nonce2.
+Both sides now calculate KEY = Nonce1 XOR Nonce2
+(This is obviously not a secure key exchange method, but it might look like one
+at a glance.)
+3. The server (emitter) now repeatedly sends LicensePlateBatch packets, with each
+one containing an array of license plate structs. Each license plate struct is
+composed of acquisition time, encrypted (XOR with KEY) state, encrypted license
+plate code, and two null bytes.
+
+Solve Pseudocode
+
+For each UDP packet's contents...
+1. Figure out the type/opcode and the payload
+2. KEY = Begin.payload XOR AckBegin.payload
+3. For each packet of type LicensePlateBatch... For each license plate in the
+batch...
+1. (With zero-indexed bytes)
+Take bytes 2 and 3, XOR with KEY, that's the state
+2. Take bytes 4 to 14, XOR with KEY, that's the plate code
+3. Display them all.
+You can spot the two "flag plates" since they're adjacent to each other, longer than
+all the other license plates, and they use the ?? code for the State field.
+
+Python Solve Script
+
+Run this in the same directory as plates.pcapng . You'll need scapy installed to read
+the PCAP. You could probably also export the UDP stream from Wireshark - you can
+export as YAML, for example - and then read that with Python.
+from scapy.all import *
+import struct
+import ctypes
+uint8 = ctypes.c_uint8
+uint16 = ctypes.c_uint16
+class MALDHeader(ctypes.BigEndianStructure):
+_pack_ = True
+_fields_ = [
+("version", uint8, 3),
+("opcode", uint8, 5),
+("length", uint16),
+]
+opcodes = {1: "BEGIN", 2: "TERMINATE", 3: "ACKBEGIN", 5: "BATCH"}
+def xor(one, two):
+return bytes(a ^ b for (a, b) in zip(one, two))
+pcap = rdpcap("plates.pcapng").filter(lambda x: UDP in x)
+print(pcap)
+nonce1 = None
+nonce2 = None
+key = None
+for packet in pcap:
+payload = bytes(packet[UDP].payload) # Grab the UDP payload
+hdr = MALDHeader.from_buffer_copy(payload[0:3]) # Parse the header
+print(hdr.version, opcodes[hdr.opcode], "\tLen:", hdr.length)
+if hdr.opcode == 1:
+print("Decoding Begin...")
+nonce1 = payload[3:] # Pull Nonce1 out of Begin
+print("NONCE1", nonce1, "Length:", len(nonce1))
+if hdr.opcode == 3:
+print("Decoding AckBegin...")
+nonce2 = payload[3:] # Pull Nonce2 out of AckBegin
+print("NONCE2", nonce2, "Length:", len(nonce2))
+key = xor(nonce1, nonce2) # Calculate the key
+print("KEY", key, "Length:", len(key))
+if hdr.opcode == 5:
+print("Decoding LicensePlateBatch...")
+numplates = hdr.length // 16
+print("Entries:", numplates)
+for i in range(numplates): # For each license plate scan in the batch
+offset = 3 + i * 16
+plate = payload[offset:offset+16]
+timing, = struct.unpack('!H', plate[0:2])
+encstate = plate[2:4]
+encplate = plate[4:14]
+discretionary = plate[14:]
+print(timing, "\t",
+xor(encstate, key).decode(),
+xor(encplate, key),
+discretionary
+)
+Output to watch for:
+...
+4 TX b'EKX465\x00\x00\x00\x00' b'\x00\x00'
+6 OK b'LLR345\x00\x00\x00\x00' b'\x00\x00'
+6 ?? b'MetaCTF{dr' b'\x00\x00'
+7 ?? b'1ver_t3st}' b'\x00\x00'
+9 MD b'YSZ320\x00\x00\x00\x00' b'\x00\x00'
+12 MS b'JUI159\x00\x00\x00\x00' b'\x00\x00'
