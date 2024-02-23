@@ -140,3 +140,43 @@ final_flag += transformed_character
 print(final_flag)
 Or more simply:
 print("".join([chr(ord(flag[i]) + 1 + i) for i in range(len(flag))]))
+
+## Binary Exploitation
+
+# Problem Statement
+
+Take a look at my new calculator app
+[https://metaproblems.com/7837d6868308cec64daf4e9d4128a2c4/simplesums.c]!
+The only thing it can do at the moment is adding two positive integers. There's an
+easter egg that gives you the flag if your numbers add up to a special number. Can you
+get that flag?
+Connect to my calculator app with the flag using the `nc host5.metaproblems.com 5030`
+command.
+
+# Solution
+
+This is a simple integer overflow challenge.
+The variables a , b , and sum are all stored as signed integers, which means that
+only numbers between –2147483648 and 2147483647 (or between -2^(32-1) and 2^(32-
+1)-1 ) can be represented.
+If the numbers we provide add up to something above that maximum ( 2147483647 ), the
+integer will wrap around to negative values. For example, if we add 1 to 2147483647
+and store it as a signed integer in C, the value it holds will become -2147483648 . To
+learn more about how negative numbers are usually stored in memory, check out
+https://en.wikipedia.org/wiki/Two%27s_complement
+We need the resulting sum to equal -1337 in order to get the flag. To get there, we
+can enter the max 2147483647 as the first integer and 2147483647 - 1337 + 2 =
+2147482312 as the second integer. You can also get here by trying to add a handful of
+large integers to see how the sum is affected.
+Just like that, we get the flag:
+Welcome to the SimpleSum calculator!
+Provide two integers between 0 and 2147483647, inclusive
+Enter the first positive integer: 2147483647
+Enter the second positive integer: 2147482312
+The sum is 4294965959
+Good job! Here's your flag:
+MetaCTF{c0unting_beyond_infinity}
+The reason the sum is displayed correctly is because the function that is used to
+print the integer ( printf ) is told to render it as an unsigned integer via the %u
+specifier. Unsigned integers can range from 0 to 4294967295 . In the if statement,
+the integer is still treated as a signed integer.
