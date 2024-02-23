@@ -1,6 +1,6 @@
-Binary Protocol Decoding: 
+## Binary Protocol Decoding: 
 
-Problem Statement
+# Problem Statement
 
 The transport department purchased a bunch of used MetaCTF license plate cameras on
 eBay, but the console's display is fried, and we can't figure out how to use them. Can
@@ -9,7 +9,7 @@ you help us out? Here's a packet capture
 a description [https://metaproblems.com/07fb1d1c1e787ce3be6db7de826a1cda/rfc.html] of
 the protocol they use.
 
-Solution
+# Solution
 
 This is a pretty straightforward binary protocol decoding challenge - you read the RFC
 and figure out the basics of the protocol to decode the UDP payloads in the PCAP. Some
@@ -18,7 +18,7 @@ bits, of the first byte), the generation of the key (it's just the payload of th
 Begin XOR'd with the payload of the AckBegin), and the way the key is applied (the XOR
 "restarts" on every individual field that needs to be encrypted).
 
-Protocol/Conversation Summarized
+# Protocol/Conversation Summarized
 
 1. The client (console) sends a Begin packet, containing Nonce1.
 2. The server (emitter) replies with an AckBegin packet, containing Nonce2.
@@ -30,7 +30,7 @@ one containing an array of license plate structs. Each license plate struct is
 composed of acquisition time, encrypted (XOR with KEY) state, encrypted license
 plate code, and two null bytes.
 
-Solve Pseudocode
+# Solve Pseudocode
 
 For each UDP packet's contents...
 1. Figure out the type/opcode and the payload
@@ -44,7 +44,7 @@ Take bytes 2 and 3, XOR with KEY, that's the state
 You can spot the two "flag plates" since they're adjacent to each other, longer than
 all the other license plates, and they use the ?? code for the State field.
 
-Python Solve Script
+# Python Solve Script
 
 Run this in the same directory as plates.pcapng . You'll need scapy installed to read
 the PCAP. You could probably also export the UDP stream from Wireshark - you can
@@ -107,3 +107,36 @@ Output to watch for:
 7 ?? b'1ver_t3st}' b'\x00\x00'
 9 MD b'YSZ320\x00\x00\x00\x00' b'\x00\x00'
 12 MS b'JUI159\x00\x00\x00\x00' b'\x00\x00'
+
+## Reverse Engineering:
+
+# Problem Statement
+
+I hid the flag in this Python script
+[https://metaproblems.com/4404b6b97072820c4b3bb702d1846fae/flag_checker.py]. It asks
+you for a flag and tells you if it's correct or not. Can you reverse engineer it to
+find the correct flag?
+The flag that the script above validates as correct is the flag for this challenge.
+You can also access the script in an online Python IDE here: https://www.onlinepython.com/1i6lX9bv0a. Click the green "Run" button to run the program.
+
+# Solution
+
+The program takes in a provided flag and compares it against a hardcoded transformed
+version of the flag ( Lcq]>N?s]bV[R[_OaScQ]]NGPYDKDNG] ). We need to reverse the
+transformation to get the flag.
+There are two main checks:
+if len(flag) != len(encrypted): return False checks if length of entered flag matches
+the length of the hardcoded string, which is 32 characters
+return all([ord(flag[i]) - 1 == ord(encrypted[i]) + i for i in range(len(encrypted))])
+checks if the ascii value of the flag minus 1 minus it's position in the string
+matches the ascii value of the hardcoded string. This can be easily reversed with a
+script like this:
+flag = "Lcq]>N?s]bV[R[_OaScQ]]NGPYDKDNG]"
+final_flag = ""
+for index in range(len(flag)):
+ascii_value_of_character = ord(flag[index])
+transformed_character = chr(ascii_value_of_character + 1 + index)
+final_flag += transformed_character
+print(final_flag)
+Or more simply:
+print("".join([chr(ord(flag[i]) + 1 + i) for i in range(len(flag))]))
